@@ -16,15 +16,15 @@ class FixEmulatorServer:
         self.heartBtInt = heartBtInt
         self.serverSocket = None
 
+
     def Start(self):
 
-        print(f"[INFO] Starting FIX Emulator on {self.host}:{self.port}")
         logging.info(f"Starting FIX Emulator on {self.host}:{self.port}") 
 
         self.serverSocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.serverSocket.bind((self.host, self.port))
         self.serverSocket.listen(1)
-        print("[INFO] Waiting for incoming FIX connection...")
+
         logging.info("Waiting for incoming FIX connection...")
 
         while True:
@@ -33,6 +33,7 @@ class FixEmulatorServer:
             print(f"Connection established from {addr}")
             thread = threading.Thread(target=self.HandleClient, args=(clientSocket,))
             thread.start()
+
 
     def HandleClient(self, clientSocket):
         buffer = ""
@@ -90,6 +91,45 @@ class FixEmulatorServer:
                     logging.info("--- Connection closed by logout ---")
 
                     return
+
+                elif msgType == "D":
+
+                    logging.info("--- NewOrderSingle (35=D) ---")
+                    logging.info(f"{'> ' + message.replace(SOH, '|')}")
+
+                    clOrdId = fixFields.get("11", "UNKNOWN")
+                    side    = fixFields.get("54", "1")
+                    qty     = fixFields.get("38", "0")
+                    symbol  = fixFields.get("55", "UNKNOWN")
+                    ordType = fixFields.get("40", "1")
+
+                    now      = datetime.utcnow().strftime("%Y%m%d-%H:%M:%S.%f")[:-3]
+                    execId   = f"EX{int(datetime.utcnow().timestamp() * 1000)}"
+                    orderId  = f"OR{int(datetime.utcnow().timestamp() * 1000)}"
+
+                    fields = {
+                        "35": "8",
+                        "150": "0",
+                        "39":  "0",
+                        "37":  orderId,
+                        "17":  execId,
+                        "11":  clOrdId,
+                        "54":  side,
+                        "38":  qty,
+                        "55":  symbol,
+                        "40":  ordType,
+                        "60":  now,
+                        "49": self.senderCompID,
+                        "56": self.targetCompID,
+                        "34": str(int(fixFields.get("34", "0")) + 1)
+                    }
+
+                    response = BuildFixMessage(fields)
+                    clientSocket.sendall(response.encode("utf-8"))
+
+                    logging.info("--- Order ACK (35=8 / 39=0) ---")
+                    logging.info(f"{'< ' + response.replace(SOH, '|')}")
+
 
                 else:
 
