@@ -8,6 +8,8 @@ SOH = '\x01'
 
 class FixEmulatorServer:
 
+    orders = {}
+
     def __init__(self, host, port, senderCompID, targetCompID, heartBtInt=30):
         self.host = host
         self.port = port
@@ -33,6 +35,25 @@ class FixEmulatorServer:
             print(f"Connection established from {addr}")
             thread = threading.Thread(target=self.HandleClient, args=(clientSocket,))
             thread.start()
+
+
+    def StoreNewOrder(self, fixFields, orderId, execId):
+
+        clOrdId = fixFields.get("11")
+
+        self.orders[clOrdId] = {
+            "orderId": orderId,
+            "execId":  execId,
+            "symbol":  fixFields.get("55"),
+            "side":    fixFields.get("54"),
+            "qty":     fixFields.get("38"),
+            "price":   fixFields.get("44"),
+            "filledQty": 0,
+            "status":  "NEW",
+            "timestamp": datetime.utcnow().strftime("%Y%m%d-%H:%M:%S.%f")[:-3]
+        }
+
+        logging.info(f"[ORDER STORED] {clOrdId} → {self.orders[clOrdId]}")
 
 
     def HandleClient(self, clientSocket):
@@ -97,20 +118,24 @@ class FixEmulatorServer:
                     logging.info("--- NewOrderSingle (35=D) ---")
                     logging.info(f"{'> ' + message.replace(SOH, '|')}")
 
-                    clOrdId = fixFields.get("11", "UNKNOWN")
+                    clOrdId = fixFields.get("11")
                     side    = fixFields.get("54", "1")
                     qty     = fixFields.get("38", "0")
                     symbol  = fixFields.get("55", "UNKNOWN")
                     ordType = fixFields.get("40", "1")
+                    price   = fixFields.get("44", "0")
 
                     now      = datetime.utcnow().strftime("%Y%m%d-%H:%M:%S.%f")[:-3]
                     execId   = f"EX{int(datetime.utcnow().timestamp() * 1000)}"
                     orderId  = f"OR{int(datetime.utcnow().timestamp() * 1000)}"
 
+                    # Store order in dictionary for future amendments/cancels
+                    self.StoreNewOrder(fixFields, orderId, execId)
+
                     fields = {
-                        "35": "8",
-                        "150": "0",
-                        "39":  "0",
+                        "35": "8",          # Execution Report
+                        "150": "0",         # ExecType = NEW
+                        "39":  "0",         # OrdStatus = NEW
                         "37":  orderId,
                         "17":  execId,
                         "11":  clOrdId,
@@ -118,6 +143,7 @@ class FixEmulatorServer:
                         "38":  qty,
                         "55":  symbol,
                         "40":  ordType,
+                        "44":  price,
                         "60":  now,
                         "49": self.senderCompID,
                         "56": self.targetCompID,
@@ -130,6 +156,72 @@ class FixEmulatorServer:
                     logging.info("--- Order ACK (35=8 / 39=0) ---")
                     logging.info(f"{'< ' + response.replace(SOH, '|')}")
 
+                elif msgType == "F":
+
+                    logging.info("--- Order Cancel Request (35=F) ---")
+                    logging.info(f"{'> ' + message.replace(SOH, '|')}")
+
+                    origClOrdId = fixFields.get("41")   # Tag 41 = OrigClOrdID
+                    newClOrdId  = fixFields.get("11")   # Tag 11 = ClOrdID
+
+                    # look up order
+                    order = self.orders.get(origClOrdId)
+
+                    if not order:
+                        logging.info(f"[CANCEL REJECT] Order {origClOrdId} not found")
+
+                        # Send Cancel Reject (ExecType = 8, OrdStatus = 8)
+                        fields = {
+                            "35": "8",
+                            "150": "8",
+                            "39":  "8",
+                            "11": newClOrdId,
+                            "41": origClOrdId,
+                            "58": "Unknown order / unable to cancel",
+                            "49": self.senderCompID,
+                            "56": self.targetCompID,
+                            "34": str(int(fixFields.get("34", "0")) + 1),
+                            "60": datetime.utcnow().strftime("%Y%m%d-%H:%M:%S.%f")[:-3],
+                        }
+
+                        response = BuildFixMessage(fields)
+                        clientSocket.sendall(response.encode("utf-8"))
+
+                        logging.info("--- Cancel Reject Sent ---")
+                        logging.info(f"{'< ' + response.replace(SOH, '|')}")
+                        continue
+
+                    # if okay, then cancel
+ 
+                    order["status"] = "CANCELED"
+
+                    now     = datetime.utcnow().strftime("%Y%m%d-%H:%M:%S.%f")[:-3]
+                    execId  = f"EX{int(datetime.utcnow().timestamp() * 1000)}"
+                    orderId = order["orderId"]
+
+                    # send cancel acknowledgement 
+                    fields = {
+                        "35": "8",
+                        "150": "4",
+                        "39":  "4",
+                        "37":  orderId,
+                        "17":  execId,
+                        "11":  newClOrdId,
+                        "41":  origClOrdId,
+                        "54":  order["side"],
+                        "38":  order["qty"],
+                        "55":  order["symbol"],
+                        "60":  now,
+                        "49": self.senderCompID,
+                        "56": self.targetCompID,
+                        "34": str(int(fixFields.get("34", "0")) + 1)
+                    }
+
+                    response = BuildFixMessage(fields)
+                    clientSocket.sendall(response.encode("utf-8"))
+
+                    logging.info("--- Cancel ACK (35=8 / 150=4 / 39=4) ---")
+                    logging.info(f"{'< ' + response.replace(SOH, '|')}")
 
                 else:
 
