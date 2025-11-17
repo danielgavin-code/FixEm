@@ -475,6 +475,210 @@ class FixEmulatorServer:
                     logging.info("---- Order Cancelled ----")
                     logging.info(f"{'< ' + response.replace(SOH, '|')}")
 
+
+                #
+                # Order Cancel/Replace Request (Tag 35=G)
+                #
+
+                elif msgType == "G":
+
+                    logging.info("---- Order Replace Request (35=G) ----")
+                    logging.info(f"{'> ' + message.replace(SOH, '|')}")
+
+                    origClOrdId = fixFields.get("41")
+                    newClOrdId  = fixFields.get("11")
+                    symbol      = fixFields.get("55")
+                    side        = fixFields.get("54")
+                    qty         = fixFields.get("38")
+                    ordType     = fixFields.get("40")
+                    price       = fixFields.get("44")
+
+                    #
+                    # validation — required tags
+                    #
+
+                    requiredTags = {
+                        "11": "ClOrdID",
+                        "41": "OrigClOrdID",
+                        "55": "Symbol",
+                        "54": "Side",
+                        "38": "OrderQty",
+                        "40": "OrdType",
+                    }
+
+                    missingTags = [tag for tag in requiredTags if not fixFields.get(tag)]
+
+                    if missingTags:
+                        missing = missingTags[0]
+
+                        logging.info(f"---- Replace Reject (missing tag {missing} {requiredTags[missing]}) ----")
+
+                        rejectFields = {
+                            "35": "3",
+                            "45": fixFields.get("34", "0"),
+                            "371": missing,
+                            "373": "1",
+                            "58": f"Required tag {missing} ({requiredTags[missing]}) missing in ReplaceRequest",
+                            "49": self.senderCompID,
+                            "56": self.targetCompID,
+                            "34": str(int(fixFields.get('34', '0')) + 1),
+                            "52": datetime.utcnow().strftime("%Y%m%d-%H:%M:%S.%f")[:-3],
+                        }
+
+                        response = BuildFixMessage(rejectFields)
+                        clientSocket.sendall(response.encode())
+                        logging.info(f"{'< ' + response.replace(SOH, '|')}")
+                        continue
+
+                    # validation — ClOrdID reuse
+
+                    if newClOrdId in self.orders:
+                        logging.info(f"---- Replace Reject (duplicate ClOrdID {newClOrdId}) ----")
+
+                        rejectFields = {
+                            "35": "8",
+                            "150": "8",
+                            "39":  "8",
+                            "11":  newClOrdId,
+                            "41":  origClOrdId,
+                            "58":  "Duplicate ClOrdID on Replace Request",
+                            "49":  self.senderCompID,
+                            "56":  self.targetCompID,
+                            "34": str(int(fixFields.get('34','0')) + 1),
+                            "60": datetime.utcnow().strftime("%Y%m%d-%H:%M:%S.%f")[:-3],
+                        }
+
+                        response = BuildFixMessage(rejectFields)
+                        clientSocket.sendall(response.encode())
+                        logging.info(f"{'< ' + response.replace(SOH, '|')}")
+                        continue
+
+                    # validation - lookup using OLD ClOrdID (origClOrdId)
+
+                    order = self.orders.get(origClOrdId)
+
+                    if not order:
+                        logging.info(f"---- Replace Reject (unknown order {origClOrdId}) ----")
+
+                        rejectFields = {
+                            "35": "8",
+                            "150": "8",
+                            "39":  "8",
+                            "11":  newClOrdId,
+                            "41":  origClOrdId,
+                            "58":  "Unknown order / unable to replace",
+                            "49":  self.senderCompID,
+                            "56":  self.targetCompID,
+                            "34": str(int(fixFields.get('34','0')) + 1),
+                            "60": datetime.utcnow().strftime("%Y%m%d-%H:%M:%S.%f")[:-3],
+                        }
+
+                        response = BuildFixMessage(rejectFields)
+                        clientSocket.sendall(response.encode())
+                        logging.info(f"{'< ' + response.replace(SOH, '|')}")
+                        continue
+
+                    # validation — invalid qty
+
+                    try:
+                        if float(qty) <= 0:
+                            raise ValueError()
+                    except:
+                        logging.info("---- Replace Reject (invalid OrderQty) ----")
+
+                        rejectFields = {
+                            "35": "3",
+                            "45": fixFields.get("34", "0"),
+                            "371": "38",
+                            "373": "5",
+                            "58": "OrderQty must be a positive number for Replace request",
+                            "49": self.senderCompID,
+                            "56": self.targetCompID,
+                            "34": str(int(fixFields.get('34','0')) + 1),
+                            "52": datetime.utcnow().strftime("%Y%m%d-%H:%M:%S.%f")[:-3],
+                        }
+
+                        response = BuildFixMessage(rejectFields)
+                        clientSocket.sendall(response.encode())
+                        logging.info(f"{'< ' + response.replace(SOH, '|')}")
+                        continue
+
+                    # validation — invalid price for Limit
+
+                    if ordType == "2":
+                        try:
+                            if float(price) <= 0:
+                                raise ValueError()
+                        except:
+                            logging.info("---- Replace Reject (invalid Price) ----")
+
+                            rejectFields = {
+                                "35": "3",
+                                "45": fixFields.get("34", "0"),
+                                "371": "44",
+                                "373": "5",
+                                "58": "Price must be positive for Limit Replace",
+                                "49": self.senderCompID,
+                                "56": self.targetCompID,
+                                "34": str(int(fixFields.get('34','0')) + 1),
+                                "52": datetime.utcnow().strftime("%Y%m%d-%H:%M:%S.%f")[:-3],
+                            }
+
+                            response = BuildFixMessage(rejectFields)
+                            clientSocket.sendall(response.encode())
+                            logging.info(f"{'< ' + response.replace(SOH, '|')}")
+                            continue
+
+                    # apply the replace values
+
+                    oldKey = origClOrdId
+
+                    order["qty"]     = qty
+                    order["price"]   = price
+                    order["ordType"] = ordType
+                    order["side"]    = side
+                    order["symbol"]  = symbol
+
+                    order["currentClOrdId"] = newClOrdId
+                    order["lastClOrdId"]    = newClOrdId
+                    order["history"].append(newClOrdId)
+
+                    # update dictionary 
+
+                    self.orders.pop(oldKey)
+                    self.orders[newClOrdId] = order
+
+                    # ack - send the ack message 
+
+                    now     = datetime.utcnow().strftime("%Y%m%d-%H:%M:%S.%f")[:-3]
+                    execId  = f"EX{int(datetime.utcnow().timestamp() * 1000)}"
+                    orderId = order["orderId"]
+
+                    ackFields = {
+                        "35": "8",
+                        "150": "5",
+                        "39":  "5",
+                        "37":  orderId,
+                        "17":  execId,
+                        "11":  newClOrdId,
+                        "41":  origClOrdId,
+                        "54":  side,
+                        "38":  qty,
+                        "55":  symbol,
+                        "40":  ordType,
+                        "44":  price,
+                        "60":  now,
+                        "49":  self.senderCompID,
+                        "56":  self.targetCompID,
+                        "34": str(int(fixFields.get("34","0")) + 1),
+                    }
+
+                    response = BuildFixMessage(ackFields)
+                    clientSocket.sendall(response.encode())
+
+                    logging.info("---- Order Replaced ----")
+                    logging.info(f"{'< ' + response.replace(SOH, '|')}")
+
                 else:
 
                     logging.info(f"--- Unsupported MsgType {msgType} ---")
