@@ -129,7 +129,7 @@ class FixEmulatorServer:
                     ordType = fixFields.get("40")
                     price   = fixFields.get("44", "0")
 
-                    # validate - session level 
+                    # validation - session level
 
                     requiredTags = {
                         "11": "ClOrdID",
@@ -148,23 +148,106 @@ class FixEmulatorServer:
 
                         rejectFields = {
                             "35": "3",
-                            "45": fixFields.get("34", "0"),
+                            "45": fixFields.get("34", "0"), 
                             "371": missing,
                             "373": "1",
                             "58": f"Required tag {missing} ({requiredTags[missing]}) missing in NewOrderSingle",
                             "49": self.senderCompID,
                             "56": self.targetCompID,
-                            "34": str(int(fixFields.get("34", "0")) + 1),
+                            "34": str(int(fixFields.get('34', '0')) + 1),
                             "52": datetime.utcnow().strftime("%Y%m%d-%H:%M:%S.%f")[:-3],
                         }
 
                         response = BuildFixMessage(rejectFields)
-                        clientSocket.sendall(response.encode("utf-8"))
+                        clientSocket.sendall(response.encode())
+                        logging.info(f"{'< ' + response.replace(SOH, '|')}")
+                        continue
+
+                    # validation - session level invalid values 
+
+                    try:
+                        qtyVal = float(qty)
+
+                        if qtyVal <= 0:
+                            raise ValueError()
+
+                    except:
+                        logging.info("---- Order Reject (invalid OrderQty) ----")
+
+                        rejectFields = {
+                            "35": "3",
+                            "45": fixFields.get("34", "0"),
+                            "371": "38",
+                            "373": "5",  # Incorrect value
+                            "58": "OrderQty must be a positive number",
+                            "49": self.senderCompID,
+                            "56": self.targetCompID,
+                            "34": str(int(fixFields.get('34', '0')) + 1),
+                            "52": datetime.utcnow().strftime("%Y%m%d-%H:%M:%S.%f")[:-3],
+                        }
+
+                        response = BuildFixMessage(rejectFields)
+                        clientSocket.sendall(response.encode())
 
                         logging.info(f"{'< ' + response.replace(SOH, '|')}")
                         continue
 
-                    # validate - application level
+                    # validation - invalid order type
+ 
+                    validOrdTypes = {"1", "2"}  # Market, Limit
+
+                    if ordType not in validOrdTypes:
+                        logging.info(f"---- Order Reject (unsupported OrdType {ordType}) ----")
+
+                        rejectFields = {
+                            "35": "3",
+                            "45": fixFields.get("34", "0"),
+                            "371": "40",
+                            "373": "2",
+                            "58": f"Unsupported OrdType {ordType}",
+                            "49": self.senderCompID,
+                            "56": self.targetCompID,
+                            "34": str(int(fixFields.get('34', '0')) + 1),
+                            "52": datetime.utcnow().strftime("%Y%m%d-%H:%M:%S.%f")[:-3],
+                        }
+
+                        response = BuildFixMessage(rejectFields)
+                        clientSocket.sendall(response.encode())
+
+                        logging.info(f"{'< ' + response.replace(SOH, '|')}")
+                        continue
+
+                    # validation - invalid price 
+                    if ordType == "2":  # Limit
+
+                        try:
+                            priceVal = float(price)
+
+                            if priceVal <= 0:
+                                raise ValueError()
+
+                        except:
+                            logging.info("---- Order Reject (invalid Price) ----")
+
+                            rejectFields = {
+                                "35": "3",
+                                "45": fixFields.get("34", "0"),
+                                "371": "44",
+                                "373": "5",
+                                "58": "Price must be positive for Limit orders",
+                                "49": self.senderCompID,
+                                "56": self.targetCompID,
+                                "34": str(int(fixFields.get('34', '0')) + 1),
+                                "52": datetime.utcnow().strftime("%Y%m%d-%H:%M:%S.%f")[:-3],
+                            }
+
+                            response = BuildFixMessage(rejectFields)
+                            clientSocket.sendall(response.encode())
+
+                            logging.info(f"{'< ' + response.replace(SOH, '|')}")
+                            continue
+
+                    # validation - applicaiton level
 
                     if clOrdId in self.orders:
                         logging.info(f"---- Order Reject (duplicate ClOrdID {clOrdId}) ----")
@@ -182,18 +265,35 @@ class FixEmulatorServer:
                         }
 
                         response = BuildFixMessage(rejectFields)
-                        clientSocket.sendall(response.encode("utf-8"))
+                        clientSocket.sendall(response.encode())
 
                         logging.info(f"{'< ' + response.replace(SOH, '|')}")
                         continue
 
+                    # accept and store order 
+
+                    now     = datetime.utcnow().strftime("%Y%m%d-%H:%M:%S.%f")[:-3]
+                    execId  = f"EX{int(datetime.utcnow().timestamp()*1000)}"
+                    orderId = f"OR{int(datetime.utcnow().timestamp()*1000)}"
+
+                    self.orders[clOrdId] = {
+                        "orderId": orderId,
+                        "execId": execId,
+                        "symbol": symbol,
+                        "side": side,
+                        "qty": qty,
+                        "price": price,
+                        "ordType": ordType,
+                        "status": "NEW",
+                        "timestamp": now,
+                        "currentClOrdId": clOrdId,
+                        "lastClOrdId": clOrdId,
+                        "history": [clOrdId],
+                    }
+
+                    logging.info(f"[ORDER STORED] {clOrdId} → {self.orders[clOrdId]}")
+
                     # send ack
-
-                    now      = datetime.utcnow().strftime("%Y%m%d-%H:%M:%S.%f")[:-3]
-                    execId   = f"EX{int(datetime.utcnow().timestamp() * 1000)}"
-                    orderId  = f"OR{int(datetime.utcnow().timestamp() * 1000)}"
-
-                    self.StoreNewOrder(fixFields, orderId, execId)
 
                     ackFields = {
                         "35": "8",
@@ -214,7 +314,7 @@ class FixEmulatorServer:
                     }
 
                     response = BuildFixMessage(ackFields)
-                    clientSocket.sendall(response.encode("utf-8"))
+                    clientSocket.sendall(response.encode())
 
                     logging.info("---- Order Accepted (NEW) ----")
                     logging.info(f"{'< ' + response.replace(SOH, '|')}")
@@ -223,9 +323,6 @@ class FixEmulatorServer:
                 # Order Cancel Request (Tag 35=F)
                 #
 
-                #
-                # Order Cancel Request (Tag 35=F)
-                #
                 elif msgType == "F":
 
                     logging.info("---- Order Cancel Request (35=F) ----")
@@ -233,8 +330,10 @@ class FixEmulatorServer:
 
                     origClOrdId = fixFields.get("41")
                     newClOrdId  = fixFields.get("11")
+                    symbol      = fixFields.get("55")
+                    side        = fixFields.get("54")
 
-                    # valiation - required tags
+                    # validation - session level
 
                     requiredTags = {
                         "11": "ClOrdID",
@@ -246,7 +345,6 @@ class FixEmulatorServer:
                     missingTags = [tag for tag in requiredTags if not fixFields.get(tag)]
 
                     if missingTags:
-
                         missing = missingTags[0]
                         logging.info(f"---- Cancel Reject (missing tag {missing} {requiredTags[missing]}) ----")
 
@@ -258,17 +356,17 @@ class FixEmulatorServer:
                             "58": f"Required tag {missing} ({requiredTags[missing]}) missing in CancelRequest",
                             "49": self.senderCompID,
                             "56": self.targetCompID,
-                            "34": str(int(fixFields.get("34", "0")) + 1),
+                            "34": str(int(fixFields.get("34","0")) + 1),
                             "52": datetime.utcnow().strftime("%Y%m%d-%H:%M:%S.%f")[:-3],
                         }
 
                         response = BuildFixMessage(rejectFields)
-                        clientSocket.sendall(response.encode("utf-8"))
+                        clientSocket.sendall(response.encode())
 
                         logging.info(f"{'< ' + response.replace(SOH, '|')}")
                         continue
 
-                    # validation - duplicate clordid
+                    # validation - order id resuse
 
                     if newClOrdId in self.orders:
                         logging.info(f"---- Cancel Reject (duplicate ClOrdID {newClOrdId}) ----")
@@ -282,17 +380,16 @@ class FixEmulatorServer:
                             "58": "Duplicate ClOrdID on Cancel Request",
                             "49": self.senderCompID,
                             "56": self.targetCompID,
-                            "34": str(int(fixFields.get('34', '0')) + 1),
+                            "34": str(int(fixFields.get('34','0')) + 1),
                             "60": datetime.utcnow().strftime("%Y%m%d-%H:%M:%S.%f")[:-3],
                         }
 
                         response = BuildFixMessage(rejectFields)
-                        clientSocket.sendall(response.encode("utf-8"))
-
+                        clientSocket.sendall(response.encode())
                         logging.info(f"{'< ' + response.replace(SOH, '|')}")
                         continue
 
-                    # validation - order not found
+                    # validation - order lookup ... does it exist
 
                     order = self.orders.get(origClOrdId)
 
@@ -308,17 +405,17 @@ class FixEmulatorServer:
                             "58": "Unknown order / unable to cancel",
                             "49": self.senderCompID,
                             "56": self.targetCompID,
-                            "34": str(int(fixFields.get("34", "0")) + 1),
+                            "34": str(int(fixFields.get("34","0")) + 1),
                             "60": datetime.utcnow().strftime("%Y%m%d-%H:%M:%S.%f")[:-3],
                         }
 
                         response = BuildFixMessage(rejectFields)
-                        clientSocket.sendall(response.encode("utf-8"))
+                        clientSocket.sendall(response.encode())
 
                         logging.info(f"{'< ' + response.replace(SOH, '|')}")
                         continue
 
-                    # validation - order already canceled
+                    # validation - already canceled
 
                     if order["status"] == "CANCELED":
                         logging.info(f"---- Cancel Reject (order already canceled {origClOrdId}) ----")
@@ -332,25 +429,30 @@ class FixEmulatorServer:
                             "58": "Order already canceled",
                             "49": self.senderCompID,
                             "56": self.targetCompID,
-                            "34": str(int(fixFields.get('34', '0')) + 1),
+                            "34": str(int(fixFields.get('34','0')) + 1),
                             "60": datetime.utcnow().strftime("%Y%m%d-%H:%M:%S.%f")[:-3],
                         }
 
                         response = BuildFixMessage(rejectFields)
-                        clientSocket.sendall(response.encode("utf-8"))
-                        logging.info("---- Cancel Reject Sent ----")
+                        clientSocket.sendall(response.encode())
+
                         logging.info(f"{'< ' + response.replace(SOH, '|')}")
                         continue
 
-                    # cancel ack
- 
+                    # update order state 
+
                     order["status"] = "CANCELED"
+                    order["lastClOrdId"] = newClOrdId
+                    order["currentClOrdId"] = newClOrdId
+                    order["history"].append(newClOrdId)
+
+                    # send cancel ack
 
                     now     = datetime.utcnow().strftime("%Y%m%d-%H:%M:%S.%f")[:-3]
                     execId  = f"EX{int(datetime.utcnow().timestamp() * 1000)}"
                     orderId = order["orderId"]
 
-                    fields = {
+                    ackFields = {
                         "35": "8",
                         "150": "4",
                         "39":  "4",
@@ -362,13 +464,13 @@ class FixEmulatorServer:
                         "38":  order["qty"],
                         "55":  order["symbol"],
                         "60":  now,
-                        "49": self.senderCompID,
-                        "56": self.targetCompID,
-                        "34": str(int(fixFields.get("34", "0")) + 1)
+                        "49":  self.senderCompID,
+                        "56":  self.targetCompID,
+                        "34": str(int(fixFields.get("34","0")) + 1),
                     }
 
-                    response = BuildFixMessage(fields)
-                    clientSocket.sendall(response.encode("utf-8"))
+                    response = BuildFixMessage(ackFields)
+                    clientSocket.sendall(response.encode())
 
                     logging.info("---- Order Cancelled ----")
                     logging.info(f"{'< ' + response.replace(SOH, '|')}")
