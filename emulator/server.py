@@ -1,3 +1,4 @@
+import logging
 import socket
 import threading
 from datetime import datetime
@@ -16,15 +17,20 @@ class FixEmulatorServer:
         self.serverSocket = None
 
     def Start(self):
+
         print(f"[INFO] Starting FIX Emulator on {self.host}:{self.port}")
+        logging.info(f"Starting FIX Emulator on {self.host}:{self.port}") 
+
         self.serverSocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.serverSocket.bind((self.host, self.port))
         self.serverSocket.listen(1)
         print("[INFO] Waiting for incoming FIX connection...")
+        logging.info("Waiting for incoming FIX connection...")
 
         while True:
             clientSocket, addr = self.serverSocket.accept()
             print(f"[INFO] Connection established from {addr}")
+            print(f"Connection established from {addr}")
             thread = threading.Thread(target=self.HandleClient, args=(clientSocket,))
             thread.start()
 
@@ -47,32 +53,53 @@ class FixEmulatorServer:
                 msgType = fixFields.get("35")
 
                 if msgType == "A":
-                    print("[INFO] Received Logon request")
+
+                    logging.info("--- Login request ---")
+                    logging.info(f"{"> " + message.replace(SOH, '|')}")
+
                     response = self.BuildLogonResponse(fixFields)
                     clientSocket.sendall(response.encode("utf-8"))
-                    print("[INFO] Sent Logon ACK")
+
+                    logging.info("--- Login response ---")
+                    logging.info(f"{"< " + response.replace(SOH, '|')}")
 
                 elif msgType == "0":
-                    print("[INFO] Received Heartbeat")
+
+                    logging.info("--- Heartbeat ---")
+                    logging.info(f"{"> " + message.replace(SOH, '|')}")
+
                     response = self.BuildHeartbeatResponse(fixFields)
                     clientSocket.sendall(response.encode("utf-8"))
-                    print("[INFO] Sent Heartbeat ACK")
+
+                    logging.info("--- Heartbeat ---")
+                    logging.info(f"{"< " + response.replace(SOH, '|')}")
 
                 elif msgType == "5":
-                    print("[INFO] Received Logout request")
+
+                    logging.info("--- Logout request ---")
+                    logging.info(f"{"> " + message.replace(SOH, '|')}")
+
                     response = self.BuildLogoutResponse(fixFields)
                     clientSocket.sendall(response.encode("utf-8"))
-                    print("[INFO] Sent Logout ACK")
+
+                    logging.info("--- Logout response ---")
+                    logging.info(f"{"< " + response.replace(SOH, '|')}")
+
                     clientSocket.close()
-                    print("[INFO] Connection closed by Logout")
+
+                    logging.info("--- Connection closed by logout ---")
+
                     return
 
                 else:
-                    print(f"[WARN] Unsupported MsgType received: {msgType}")
+
+                    logging.info(f"--- Unsupported MsgType {msgType} ---")
+                    logging.info(f"{"> " + message.replace(SOH, '|')}")
+
                     # Add handling for other types as needed
 
         clientSocket.close()
-        print("[INFO] Connection closed")
+        logging.info("--- Connection closed ---")
 
 
     def BuildLogonResponse(self, incomingMsg):
