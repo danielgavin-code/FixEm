@@ -19,16 +19,43 @@
 #     Changes  :
 #
 
+import os
 import sys
+import yaml
+import logging
 import argparse
 
-from cert.validator import CertificationValidator
+from datetime        import datetime
+from emulator.server import FixEmulatorServer
+from cert.validator  import CertificationValidator
+
+TODAY = datetime.now().strftime("%Y%m%d")
 
 # let's add some color
 BLUE   = '\033[94m'
 GREEN  = '\033[92m'
 YELLOW = '\033[93m'
 RESET  = '\033[0m'
+
+
+def InitializeLogging():
+
+    os.makedirs("logs", exist_ok=True)
+
+    logfile = f"logs/{TODAY}.txt"
+
+    logging.basicConfig(
+
+        level=logging.INFO,
+        format='%(asctime)s [%(levelname)s] %(message)s',
+
+        handlers=[
+            logging.FileHandler(logfile, mode='a'),  # Append mode
+            logging.StreamHandler()  # Also log to console
+        ]
+
+    )
+
 
 ###############################################################################
 #
@@ -99,13 +126,45 @@ def ParseArgs():
 
 def Main():
 
-    args = ParseArgs() 
+    args = ParseArgs()
+
+    InitializeLogging()
 
     #
     # emulate
     #
+
     if args.mode == "emulate":
-        print("[INFO] Coming soon")
+
+        if not args.config:
+            print("[ERROR] --config is required for emulate mode")
+            sys.exit(1)
+
+        print(f"[INFO] Loading emulator config: {args.config}")
+
+        try:
+            with open(args.config, 'r') as file:
+                config = yaml.safe_load(file)
+
+            host = config.get("host", "127.0.0.1")
+            port = config.get("port", 9898)
+            senderCompID = config.get("sender_comp_id", "FIXEM")
+            targetCompID = config.get("target_comp_id", "CLIENT1")
+            heartBtInt = config.get("heartbtint", 30)
+
+            emulator = FixEmulatorServer(
+                host=host,
+                port=port,
+                senderCompID=senderCompID,
+                targetCompID=targetCompID,
+                heartBtInt=heartBtInt
+            )
+
+            emulator.Start()
+
+        except Exception as e:
+            print(f"[ERROR] Failed to start emulator: {str(e)}")
+            sys.exit(2)
 
     #
     # certify
@@ -124,7 +183,7 @@ def Main():
             validator.ParseMessages()
             results = validator.ValidateMessages()
 
-            print("\n--- Certification Results ---")
+            print("--- Certification Results ---")
             for label, message in results:
                 print(f"  {label:8} {message}")
             print("")
@@ -132,7 +191,6 @@ def Main():
         except Exception as e:
             print(f"[ERROR] Certification failed: {str(e)}")
             sys.exit(2)
-
 
     else:
         print("[ERROR] Invalid mode selected")
