@@ -1,0 +1,58 @@
+session:
+  name: equities
+  enabled: true
+
+  role: initiator        # initiator | acceptor
+
+  schedule:
+    timezone: "America/New_York"
+    start: "09:29:50"
+    end:   "16:00:10"
+
+connection:
+  host: "127.0.0.1"
+  port: 9898
+  sender_comp_id: "FIXEM"
+  target_comp_id: "CLIENT1"
+  heartbtint: 30
+
+execution:
+  rules:
+    - match: "A*"
+      behavior: full_fill
+
+    - match: "B*"
+      behavior: partial_then_full
+
+    - match: "C*"
+      behavior: multi_partial_then_full
+
+    - match: "D*"
+      behavior: partial_no_more
+
+    - match: "E*"
+      behavior: partial_then_cancel
+
+    - match: "F*"
+      behavior: amend_then_full
+
+    - match: "G*"
+      behavior: amend_partial_full
+
+    - match: "H*"
+      behavior: amend_drama
+
+    - match: "I*"
+      behavior: cancel_flow
+
+    - match: "J*"
+      behavior: reject_flow
+
+    - match: "K*"
+      behavior: timeout_flow
+
+    - match: "L*"
+      behavior: blastbeat
+
+    - match: "*"
+      behavior: undefined_test_case
