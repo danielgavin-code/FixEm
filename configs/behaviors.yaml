@@ -1,0 +1,153 @@
+#
+#     Title    : behaviors.yaml 
+#     Version  : 1.0
+#     Date     : 19 November 2025 
+#     Author   : Daniel Gavin
+#
+#     Function : Behavior definitions. 
+#
+#     Modification History
+#
+#     Date     : 19 November 2025 
+#     Author   : Daniel Gavin
+#     Changes  : New file.
+#
+#     Date     :
+#     Author   :
+#     Changes  :
+#
+
+behaviors:
+
+  full_fill:
+    description: "Immediate full execution."
+    scenario:
+      - send: new
+      - delay: 50
+      - send: full_fill
+      - end: true
+
+  partial_then_full:
+    description: "One partial fill followed by a final full completion."
+    scenario:
+      - send: new
+      - delay: 100
+      - send: partial
+      - delay: 300
+      - send: full_fill
+      - end: true
+
+  multi_partial_then_full:
+    description: "Multiple staggered partial fills followed by a final full fill."
+    scenario:
+      - send: new
+      - delay: 100
+      - send: partial
+        note: "First partial fill"
+      - delay: 150
+      - send: partial
+        note: "Second partial fill"
+      - delay: 200
+      - send: full_fill
+      - end: true
+
+  partial_no_more:
+    description: "A single partial fill, then the order remains open indefinitely."
+    scenario:
+      - send: new
+      - delay: 100
+      - send: partial
+      - end: true
+
+  partial_then_cancel:
+    description: "Partial fill, then venue cancels the remaining quantity."
+    scenario:
+      - send: new
+      - delay: 100
+      - send: partial
+      - delay: 300
+      - send: cancel
+      - end: true
+
+  amend_then_full:
+    description: "No execution occurs until the client sends a Replace (G)."
+    scenario:
+      - send: new
+      - wait_for: replace
+      - send: replace_ack
+      - delay: 200
+      - send: full_fill
+      - end: true
+
+  amend_partial_full:
+    description: "Partial fill, then required replace, then final full fill."
+    scenario:
+      - send: new
+      - delay: 100
+      - send: partial
+      - wait_for: replace
+      - send: replace_ack
+      - delay: 200
+      - send: full_fill
+      - end: true
+
+  amend_drama:
+    description: "Partial → Replace → Partial → Replace → Full — the dramatic cert flow."
+    scenario:
+      - send: new
+      - delay: 100
+      - send: partial
+      - wait_for: replace
+      - send: replace_ack
+      - delay: 150
+      - send: partial
+      - wait_for: replace
+      - send: replace_ack
+      - delay: 200
+      - send: full_fill
+      - end: true
+
+  cancel_flow:
+    description: "NEW ack followed by immediate venue-initiated cancel."
+    scenario:
+      - send: new
+      - delay: 50
+      - send: cancel
+      - end: true
+
+  reject_flow:
+    description: "Reject the order immediately without acknowledging NEW."
+    scenario:
+      - send: reject
+      - end: true
+
+  timeout_flow:
+    description: "Acknowledge NEW, then intentionally ghost (no fills, no cancel)."
+    scenario:
+      - send: new
+      - note: "Session heartbeat/test-req logic manages subsequent behavior."
+      - end: true
+
+  undefined_test_case:
+    description: "Fallback: accept, then cancel with reason."
+    scenario: 
+      - send: new
+      - delay: 50
+      - send: cancel
+        text: "No test case defined for this symbol."
+      - end: true
+
+  custom_blastbeat:
+    description: "Example of custom fill logic ... rapid small executions."
+    scenario:
+      - send: new
+      - note: "Begin micro-burst fills."
+      - loop:
+          until: remaining_qty == 0
+          steps:
+            - delay: 10
+            - send: partial
+              size: "1%"
+              note: "Blastbeat micro-fill"
+      - send: full_fill
+      - end: true
