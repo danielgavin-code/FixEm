@@ -92,7 +92,7 @@ behaviors:
       - end: true
 
   amend_drama:
-    description: "Partial → Replace → Partial → Replace → Full — the dramatic cert flow."
+    description: "Partial -> Replace → Partial -> Replace -> Full (dramatic fill)"
     scenario:
       - send: new
       - delay: 100
@@ -137,7 +137,7 @@ behaviors:
         text: "No test case defined for this symbol."
       - end: true
 
-  custom_blastbeat:
+  blastbeat:
     description: "Example of custom fill logic ... rapid small executions."
     scenario:
       - send: new
