@@ -25,9 +25,11 @@ import yaml
 import logging
 import argparse
 
+from cert.validator  import CertificationValidator
+from ConfigLoader    import ConfigLoader
 from datetime        import datetime
 from emulator.server import FixEmulatorServer
-from cert.validator  import CertificationValidator
+from ScenarioEngine  import ScenarioEngine
 
 TODAY = datetime.now().strftime("%Y%m%d")
 
@@ -142,22 +144,36 @@ def Main():
 
         print(f"[INFO] Loading emulator config: {args.config}")
 
-        try:
-            with open(args.config, 'r') as file:
-                config = yaml.safe_load(file)
+        print(f"[INFO] Booting FixEm via engine.yaml")
 
-            host = config.get("host", "127.0.0.1")
-            port = config.get("port", 9898)
-            senderCompID = config.get("sender_comp_id", "FIXEM")
-            targetCompID = config.get("target_comp_id", "CLIENT1")
-            heartBtInt = config.get("heartbtint", 30)
+        try:
+            # load all configs (engine, behaviors, sessions)
+            cfgLoader = ConfigLoader("configs")
+            configBundle = cfgLoader.loadAll()
+
+            # create scenario engine
+            scenarioEngine = ScenarioEngine(configBundle["behaviors"])
+
+            # start only the first session (todo - wire multi-session server)
+            sessions = configBundle["sessions"]
+            if not sessions:
+                print("[ERROR] No enabled sessions in engine.yaml")
+                sys.exit(1)
+
+            # grab first session config (equities) 
+            sessionName, sessionCfg = next(iter(sessions.items()))
+            conn = sessionCfg["connection"]
+
+            print(f"[INFO] Starting session '{sessionName}' at {conn['host']}:{conn['port']}")
 
             emulator = FixEmulatorServer(
-                host=host,
-                port=port,
-                senderCompID=senderCompID,
-                targetCompID=targetCompID,
-                heartBtInt=heartBtInt
+                host=conn["host"],
+                port=conn["port"],
+                senderCompID=conn["sender_comp_id"],
+                targetCompID=conn["target_comp_id"],
+                heartBtInt=conn["heartbtint"],
+                scenarioEngine=scenarioEngine,
+                sessionConfig=sessionCfg
             )
 
             emulator.Start()
@@ -169,6 +185,7 @@ def Main():
     #
     # certify
     #
+
     elif args.mode == "certify":
 
         if not args.log:
