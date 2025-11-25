@@ -10,14 +10,16 @@ class FixEmulatorServer:
 
     orders = {}
 
-    def __init__(self, host, port, senderCompID, targetCompID, heartBtInt=30):
-        self.host = host
-        self.port = port
-        self.senderCompID = senderCompID
-        self.targetCompID = targetCompID
-        self.heartBtInt = heartBtInt
-        self.serverSocket = None
-
+    def __init__(self, host, port, senderCompID, targetCompID, heartBtInt=30,
+                   scenarioEngine=None, sessionConfig=None):
+        self.host           = host
+        self.port           = port
+        self.senderCompID   = senderCompID
+        self.targetCompID   = targetCompID
+        self.heartBtInt     = heartBtInt
+        self.serverSocket   = None
+        self.scenarioEngine = scenarioEngine
+        self.sessionConfig  = sessionConfig
 
     def Start(self):
 
