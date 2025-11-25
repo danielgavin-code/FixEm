@@ -1,0 +1,39 @@
+#
+#     Title    : engine.yaml 
+#     Version  : 1.0
+#     Date     : 25 November 2025 
+#     Author   : Daniel Gavin
+#
+#     Function : Define sessions to load at start up. 
+#
+#     Modification History
+#
+#     Date     : 25 November 2025 
+#     Author   : Daniel Gavin
+#     Changes  : New file.
+#
+#     Date     :
+#     Author   :
+#     Changes  :
+#
+
+engine:
+
+  sessions:
+
+    # ------------------------------------------------------------------------
+    #   session definitions 
+    #
+    #   name     : logical name for session.
+    #
+    #   file     : filename of the session configuration (.yaml) located
+    #              in the configs/ directory.
+    #
+    #   enabled  : true   = session will start when FixEm boots
+    #              false  = session is defined but will not start automatically
+    # ------------------------------------------------------------------------
+
+    - name: equities
+      file: "equities.yaml"
+      enabled: true
+
