@@ -40,6 +40,18 @@ YELLOW = '\033[93m'
 RESET  = '\033[0m'
 
 
+###############################################################################
+#
+# Procedure   : InitializeLogging() 
+#
+# Description : Initialize Python logging. 
+#
+# Input       : -none-
+#
+# Returns     : -none- 
+#
+###############################################################################
+
 def InitializeLogging():
 
     os.makedirs("logs", exist_ok=True)
