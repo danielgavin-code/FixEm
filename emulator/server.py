@@ -44,6 +44,7 @@ class FixEmulatorServer:
         self.targetCompID   = targetCompID
         self.heartBtInt     = heartBtInt
         self.serverSocket   = None
+        self.outSeq         = 1
 
         # scenario engine wiring
         self.scenarioEngine = scenarioEngine
@@ -110,6 +111,24 @@ class FixEmulatorServer:
 
     ###############################################################################
     #
+    # Procedure   : _getOrder()
+    #
+    # Description : Return and increment outbound FIX sequnce number for scenario
+    #             : execs.
+    # 
+    # Input       : clOrdId - client order identifier
+    # 
+    # Returns     : dictionary - order object or None if not found
+    #
+    ###############################################################################
+
+    def _nextOutboundSeq(self):
+        self.outSeq += 1
+        return self.outSeq
+
+
+    ###############################################################################
+    #
     # Procedure   : _sendScenarioExec()
     #
     # Description : Build and send scenario-driven ExecReport.
@@ -125,7 +144,6 @@ class FixEmulatorServer:
     def _sendScenarioExec(self, order, action):
 
         clientSocket = order.get("clientSocket")
-
         if not clientSocket:
             logging.warning(f"[SCENARIO] No client socket for order {order}")
             return
@@ -139,6 +157,7 @@ class FixEmulatorServer:
 
         try:
             origQty = float(qtyStr)
+
         except Exception:
             origQty = 0.0
 
@@ -149,15 +168,16 @@ class FixEmulatorServer:
         ordStatus = None
         lastQty   = 0.0
 
+        # 
+        # scenario actions
+        # 
+
         if action == "new":
-            # we already send the new ack
-            # treat this as no-op for now
             logging.info(f"[SCENARIO] action=new for {clOrdId} (no extra ExecReport sent)")
             return
 
         elif action == "partial":
             execType = "1"
-            # simple: 25% of remaining
             fillQty = leavesQty * 0.25 if leavesQty > 0 else 0.0
             lastQty = fillQty
             cumQty += fillQty
@@ -181,11 +201,16 @@ class FixEmulatorServer:
             ordStatus = "8"
             lastQty   = 0.0
 
+        elif action == "replace_ack":
+            execType  = "5" 
+            ordStatus = "5"
+            lastQty   = 0.0
+            logging.info(f"[SCENARIO] Replace ACK for {clOrdId}")
+
         else:
             logging.warning(f"[SCENARIO] Unsupported action '{action}'")
             return
 
-        # update order state
         order["cumQty"]    = cumQty
         order["leavesQty"] = leavesQty
         order["status"]    = {
@@ -212,21 +237,20 @@ class FixEmulatorServer:
             "38":  qtyStr,
             "44":  price,
             "60":  now,
-            "32":  f"{lastQty:.0f}",
+            "32":  str(lastQty),
             "31":  price,
-            "14":  f"{cumQty:.0f}",
-            "151": f"{leavesQty:.0f}",
+            "14":  str(cumQty),
+            "151": str(leavesQty),
             "49":  self.senderCompID,
             "56":  self.targetCompID,
-            "34":  str(self.scenarioSeqNum),
+            "34":  self._nextOutboundSeq(),  # you already have this method
         }
-
-        self.scenarioSeqNum += 1
 
         response = BuildFixMessage(fields)
         clientSocket.sendall(response.encode())
+
         logging.info(f"---- Scenario ExecReport ({action}) ----")
-        logging.info("< " + response.replace(SOH, '|'))
+        logging.info("< " + response.replace(SOH, "|"))
 
 
     ###############################################################################
