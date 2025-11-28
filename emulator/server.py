@@ -56,6 +56,20 @@ class FixEmulatorServer:
     # core server
     #
 
+
+    ###############################################################################
+    #
+    # Procedure   : Start()
+    #
+    # Description : - Initialize listener socket.
+    #             : - Spawn handler threads for FIX client connections.
+    #
+    # Input       : -none-
+    #
+    # Returns     : -none-
+    #
+    ###############################################################################
+
     def Start(self):
 
         logging.info(f"Starting FIX Emulator on {self.host}:{self.port}")
@@ -77,16 +91,41 @@ class FixEmulatorServer:
     # scenario helpers
     # 
 
+
+    ###############################################################################
+    #
+    # Procedure   : _getOrder()
+    #
+    # Description : Lookup and return stored order dictionary by ClOrdID.
+    #
+    # Input       : clOrdId - client order identifier
+    #
+    # Returns     : dictionary - order object or None if not found
+    #
+    ###############################################################################
+
     def _getOrder(self, clOrdId):
         return self.orders.get(clOrdId)
 
+
+    ###############################################################################
+    #
+    # Procedure   : _sendScenarioExec()
+    #
+    # Description : Build and send scenario-driven ExecReport.
+    #             : - Simulate fills, partial fills, cancels, rejects.
+    #
+    # Input       : order  - dictionary - stored order state 
+    #             : action - string     - scenario action (partial, full_fill, etc.)
+    #
+    # Returns     : -none-
+    #
+    ###############################################################################
+
     def _sendScenarioExec(self, order, action):
-        """
-        Build and send a real 35=8 based on a scenario action.
-        action: 'partial', 'full_fill', 'fill', 'cancel', 'reject', etc.
-        """
 
         clientSocket = order.get("clientSocket")
+
         if not clientSocket:
             logging.warning(f"[SCENARIO] No client socket for order {order}")
             return
@@ -189,17 +228,31 @@ class FixEmulatorServer:
         logging.info(f"---- Scenario ExecReport ({action}) ----")
         logging.info("< " + response.replace(SOH, '|'))
 
+
+    ###############################################################################
+    #
+    # Procedure   : HandleScenarioAction()
+    #
+    # Description : Process a scenario-driven action (fill, partial, cancel)
+    #             : - Locate stored order and send ExecReport. 
+    #
+    # Input       : orderObj - dictionary - contains clOrdID
+    #             : action   - string     - scenario action (partial, full_fill, ..)
+    #
+    # Returns     : -none-
+    #
+    ###############################################################################
+
     def HandleScenarioAction(self, orderObj, action):
-        """
-        Called by ScenarioEngine.handleSend(msgType, orderObj).
-        orderObj must contain clOrdID.
-        """
+
         clOrdId = orderObj.get("clOrdID")
+
         if not clOrdId:
             logging.warning("[SCENARIO] orderObj missing clOrdID")
             return
 
         order = self._getOrder(clOrdId)
+
         if not order:
             logging.warning(f"[SCENARIO] No stored order for ClOrdID={clOrdId}")
             return
