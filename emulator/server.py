@@ -1,3 +1,28 @@
+#!/usr/bin/python
+
+#
+#     Title    : server.py
+#     Version  : 1.0
+#     Date     : 28 November 2025
+#     Author   : Daniel Gavin
+#
+#     Function : Core FIX Emulator server.
+#              :  - Handles incoming FIX session messages.
+#              :  - Processes application-layer messages.
+#              :  - Store order state and lifecycle transitions.
+#              :  - Integrates with ScenarioEngine for scripted executions.
+#
+#     Modification History
+#
+#     Date     : 28 November 2025
+#     Author   : Daniel Gavin
+#     Changes  : New file. 
+#
+#     Date     :
+#     Author   :
+#     Changes  :
+#
+
 import logging
 import socket
 import threading
@@ -182,15 +207,36 @@ class FixEmulatorServer:
         logging.info(f"[SCENARIO] HandleScenarioAction: clOrdID={clOrdId}, action={action}")
         self._sendScenarioExec(order, action)
 
+
     # 
     # client loop
     #
 
+
+    ###############################################################################
+    #
+    # Procedure   : HandleClient()
+    #
+    # Description : Main loop that does that does the following ... 
+    #             : - Receives raw data.
+    #             : - Parses MsgType.
+    #             : - Message validation and business logic.
+    #             : - Sends response.
+    #
+    # Input       : clientSocket - TCP socket connected to the FIX client
+    #
+    # Returns     : -none- (runs until client disconnects or Logout)
+    #
+    ###############################################################################
+
     def HandleClient(self, clientSocket):
+
         buffer = ""
 
         while True:
+
             data = clientSocket.recv(4096)
+
             if not data:
                 break
 
@@ -198,8 +244,10 @@ class FixEmulatorServer:
 
             # crude message seperator
             while SOH in buffer:
+
                 message, sep, buffer = buffer.partition(SOH * 2) 
                 fixFields = ParseFixMessage(message + SOH)
+
                 if not fixFields:
                     continue
 
@@ -276,15 +324,15 @@ class FixEmulatorServer:
                         logging.info(f"---- Order Reject (missing tag {missing} {requiredTags[missing]}) ----")
 
                         rejectFields = {
-                            "35": "3",
-                            "45":  fixFields.get("34", "0"),
+                            "35" : "3",
+                            "45" : fixFields.get("34", "0"),
                             "371": missing,
                             "373": "1",
-                            "58":  f"Required tag {missing} ({requiredTags[missing]}) missing in NewOrderSingle",
-                            "49":  self.senderCompID,
-                            "56":  self.targetCompID,
-                            "34":  str(int(fixFields.get('34', '0')) + 1),
-                            "52":  datetime.utcnow().strftime("%Y%m%d-%H:%M:%S.%f")[:-3],
+                            "58" : f"Required tag {missing} ({requiredTags[missing]}) missing in NewOrderSingle",
+                            "49" : self.senderCompID,
+                            "56" : self.targetCompID,
+                            "34" : str(int(fixFields.get('34', '0')) + 1),
+                            "52" : datetime.utcnow().strftime("%Y%m%d-%H:%M:%S.%f")[:-3],
                         }
 
                         response = BuildFixMessage(rejectFields)
@@ -295,22 +343,26 @@ class FixEmulatorServer:
                     # validation - session level invalid values
 
                     try:
+
                         qtyVal = float(qty)
+
                         if qtyVal <= 0:
                             raise ValueError()
+
                     except Exception:
+
                         logging.info("---- Order Reject (invalid OrderQty) ----")
 
                         rejectFields = {
-                            "35": "3",
-                            "45":  fixFields.get("34", "0"),
+                            "35" : "3",
+                            "45" : fixFields.get("34", "0"),
                             "371": "38",
                             "373": "5", 
-                            "58":  "OrderQty must be a positive number",
-                            "49":  self.senderCompID,
-                            "56":  self.targetCompID,
-                            "34":  str(int(fixFields.get('34', '0')) + 1),
-                            "52":  datetime.utcnow().strftime("%Y%m%d-%H:%M:%S.%f")[:-3],
+                            "58" : "OrderQty must be a positive number",
+                            "49" : self.senderCompID,
+                            "56" : self.targetCompID,
+                            "34" : str(int(fixFields.get('34', '0')) + 1),
+                            "52" : datetime.utcnow().strftime("%Y%m%d-%H:%M:%S.%f")[:-3],
                         }
 
                         response = BuildFixMessage(rejectFields)
@@ -326,15 +378,15 @@ class FixEmulatorServer:
                         logging.info(f"---- Order Reject (unsupported OrdType {ordType}) ----")
 
                         rejectFields = {
-                            "35": "3",
-                            "45":  fixFields.get("34", "0"),
+                            "35" : "3",
+                            "45" : fixFields.get("34", "0"),
                             "371": "40",
                             "373": "2",
-                            "58":  f"Unsupported OrdType {ordType}",
-                            "49":  self.senderCompID,
-                            "56":  self.targetCompID,
-                            "34":  str(int(fixFields.get('34', '0')) + 1),
-                            "52":  datetime.utcnow().strftime("%Y%m%d-%H:%M:%S.%f")[:-3],
+                            "58" : f"Unsupported OrdType {ordType}",
+                            "49" : self.senderCompID,
+                            "56" : self.targetCompID,
+                            "34" : str(int(fixFields.get('34', '0')) + 1),
+                            "52" : datetime.utcnow().strftime("%Y%m%d-%H:%M:%S.%f")[:-3],
                         }
 
                         response = BuildFixMessage(rejectFields)
@@ -348,21 +400,23 @@ class FixEmulatorServer:
 
                         try:
                             priceVal = float(price)
+
                             if priceVal <= 0:
                                 raise ValueError()
+
                         except Exception:
                             logging.info("---- Order Reject (invalid Price) ----")
 
                             rejectFields = {
-                                "35": "3",
-                                "45":  fixFields.get("34", "0"),
+                                "35" : "3",
+                                "45" : fixFields.get("34", "0"),
                                 "371": "44",
                                 "373": "5",
-                                "58":  "Price must be positive for Limit orders",
-                                "49":  self.senderCompID,
-                                "56":  self.targetCompID,
-                                "34":  str(int(fixFields.get('34', '0')) + 1),
-                                "52":  datetime.utcnow().strftime("%Y%m%d-%H:%M:%S.%f")[:-3],
+                                "58" : "Price must be positive for Limit orders",
+                                "49" : self.senderCompID,
+                                "56" : self.targetCompID,
+                                "34" : str(int(fixFields.get('34', '0')) + 1),
+                                "52" : datetime.utcnow().strftime("%Y%m%d-%H:%M:%S.%f")[:-3],
                             }
 
                             response = BuildFixMessage(rejectFields)
@@ -373,18 +427,19 @@ class FixEmulatorServer:
                     # validation - application level
 
                     if clOrdId in self.orders:
+
                         logging.info(f"---- Order Reject (duplicate ClOrdID {clOrdId}) ----")
 
                         rejectFields = {
-                            "35": "8",
+                            "35" : "8",
                             "150": "8",
-                            "39":  "8",
-                            "11":  clOrdId,
-                            "58":  "Duplicate ClOrdID — order already exists",
-                            "49":  self.senderCompID,
-                            "56":  self.targetCompID,
-                            "34":  str(int(fixFields.get('34', '0')) + 1),
-                            "60":  datetime.utcnow().strftime("%Y%m%d-%H:%M:%S.%f")[:-3],
+                            "39" : "8",
+                            "11" : clOrdId,
+                            "58" : "Duplicate ClOrdID — order already exists",
+                            "49" : self.senderCompID,
+                            "56" : self.targetCompID,
+                            "34" : str(int(fixFields.get('34', '0')) + 1),
+                            "60" : datetime.utcnow().strftime("%Y%m%d-%H:%M:%S.%f")[:-3],
                         }
 
                         response = BuildFixMessage(rejectFields)
@@ -399,27 +454,27 @@ class FixEmulatorServer:
                     orderId = f"OR{int(datetime.utcnow().timestamp() * 1000)}"
 
                     self.orders[clOrdId] = {
-                        "orderId":   orderId,
-                        "execId":    execId,
-                        "symbol":    symbol,
-                        "side":      side,
-                        "qty":       qty,
-                        "price":     price,
-                        "ordType":   ordType,
-                        "status":    "NEW",
+                        "orderId"  : orderId,
+                        "execId"   : execId,
+                        "symbol"   : symbol,
+                        "side"     : side,
+                        "qty"      : qty,
+                        "price"    : price,
+                        "ordType"  : ordType,
+                        "status"   : "NEW",
                         "timestamp": now,
 
                         # track ids / history
-                        "clOrdID":        clOrdId,
+                        "clOrdID"       : clOrdId,
                         "currentClOrdId": clOrdId,
-                        "lastClOrdId":    clOrdId,
-                        "history":        [clOrdId],
+                        "lastClOrdId"   : clOrdId,
+                        "history"       : [clOrdId],
 
                         # socket needed for scenario-generated execs
                         "clientSocket": clientSocket,
 
                         # execution progress tracking
-                        "cumQty":    0.0,
+                        "cumQty"   : 0.0,
                         "leavesQty": float(qty) if qty else 0.0,
                     }
 
@@ -428,21 +483,21 @@ class FixEmulatorServer:
                     # send ack
 
                     ackFields = {
-                        "35": "8",
+                        "35" : "8",
                         "150": "0",
-                        "39":  "0",
-                        "37":  orderId,
-                        "17":  execId,
-                        "11":  clOrdId,
-                        "54":  side,
-                        "38":  qty,
-                        "55":  symbol,
-                        "40":  ordType,
-                        "44":  price,
-                        "60":  now,
-                        "49":  self.senderCompID,
-                        "56":  self.targetCompID,
-                        "34":  str(int(fixFields.get("34", "0")) + 1)
+                        "39" :  "0",
+                        "37" :  orderId,
+                        "17" :  execId,
+                        "11" :  clOrdId,
+                        "54" :  side,
+                        "38" :  qty,
+                        "55" :  symbol,
+                        "40" :  ordType,
+                        "44" :  price,
+                        "60" :  now,
+                        "49" :  self.senderCompID,
+                        "56" :  self.targetCompID,
+                        "34" :  str(int(fixFields.get("34", "0")) + 1)
                     }
 
                     response = BuildFixMessage(ackFields)
@@ -459,11 +514,11 @@ class FixEmulatorServer:
 
                         orderObj = {
                             "clOrdID": clOrdId,
-                            "symbol":  symbol,
-                            "side":    side,
-                            "qty":     qty,
-                            "price":   price,
-                            "server":  self,
+                            "symbol" : symbol,
+                            "side"   : side,
+                            "qty"    : qty,
+                            "price"  : price,
+                            "server" : self,
                         }
 
                         # choose behavior
@@ -508,15 +563,15 @@ class FixEmulatorServer:
                         logging.info(f"---- Cancel Reject (missing tag {missing} {requiredTags[missing]}) ----")
 
                         rejectFields = {
-                            "35": "3",
-                            "45":  fixFields.get("34", "0"),
+                            "35" : "3",
+                            "45" : fixFields.get("34", "0"),
                             "371": missing,
                             "373": "1",
-                            "58":  f"Required tag {missing} ({requiredTags[missing]}) missing in CancelRequest",
-                            "49":  self.senderCompID,
-                            "56":  self.targetCompID,
-                            "34":  str(int(fixFields.get("34", "0")) + 1),
-                            "52":  datetime.utcnow().strftime("%Y%m%d-%H:%M:%S.%f")[:-3],
+                            "58" : f"Required tag {missing} ({requiredTags[missing]}) missing in CancelRequest",
+                            "49" : self.senderCompID,
+                            "56" : self.targetCompID,
+                            "34" : str(int(fixFields.get("34", "0")) + 1),
+                            "52" : datetime.utcnow().strftime("%Y%m%d-%H:%M:%S.%f")[:-3],
                         }
 
                         response = BuildFixMessage(rejectFields)
@@ -530,16 +585,16 @@ class FixEmulatorServer:
                         logging.info(f"---- Cancel Reject (duplicate ClOrdID {newClOrdId}) ----")
 
                         rejectFields = {
-                            "35": "8",
+                            "35" : "8",
                             "150": "8",
-                            "39":  "8",
-                            "11":  newClOrdId,
-                            "41":  origClOrdId,
-                            "58":  "Duplicate ClOrdID on Cancel Request",
-                            "49":  self.senderCompID,
-                            "56":  self.targetCompID,
-                            "34":  str(int(fixFields.get('34', '0')) + 1),
-                            "60":  datetime.utcnow().strftime("%Y%m%d-%H:%M:%S.%f")[:-3],
+                            "39" : "8",
+                            "11" : newClOrdId,
+                            "41" : origClOrdId,
+                            "58" : "Duplicate ClOrdID on Cancel Request",
+                            "49" : self.senderCompID,
+                            "56" : self.targetCompID,
+                            "34" : str(int(fixFields.get('34', '0')) + 1),
+                            "60" : datetime.utcnow().strftime("%Y%m%d-%H:%M:%S.%f")[:-3],
                         }
 
                         response = BuildFixMessage(rejectFields)
@@ -555,16 +610,16 @@ class FixEmulatorServer:
                         logging.info(f"---- Cancel Reject (unknown order {origClOrdId}) ----")
 
                         rejectFields = {
-                            "35": "8",
+                            "35" : "8",
                             "150": "8",
-                            "39":  "8",
-                            "11":  newClOrdId,
-                            "41":  origClOrdId,
-                            "58":  "Unknown order / unable to cancel",
-                            "49":  self.senderCompID,
-                            "56":  self.targetCompID,
-                            "34":  str(int(fixFields.get("34", "0")) + 1),
-                            "60":  datetime.utcnow().strftime("%Y%m%d-%H:%M:%S.%f")[:-3],
+                            "39" : "8",
+                            "11" : newClOrdId,
+                            "41" : origClOrdId,
+                            "58" : "Unknown order / unable to cancel",
+                            "49" : self.senderCompID,
+                            "56" : self.targetCompID,
+                            "34" : str(int(fixFields.get("34", "0")) + 1),
+                            "60" : datetime.utcnow().strftime("%Y%m%d-%H:%M:%S.%f")[:-3],
                         }
 
                         response = BuildFixMessage(rejectFields)
@@ -578,16 +633,16 @@ class FixEmulatorServer:
                         logging.info(f"---- Cancel Reject (order already canceled {origClOrdId}) ----")
 
                         rejectFields = {
-                            "35": "8",
+                            "35" : "8",
                             "150": "8",
-                            "39":  "8",
-                            "11":  newClOrdId,
-                            "41":  origClOrdId,
-                            "58":  "Order already canceled",
-                            "49":  self.senderCompID,
-                            "56":  self.targetCompID,
-                            "34":  str(int(fixFields.get('34', '0')) + 1),
-                            "60":  datetime.utcnow().strftime("%Y%m%d-%H:%M:%S.%f")[:-3],
+                            "39" : "8",
+                            "11" : newClOrdId,
+                            "41" : origClOrdId,
+                            "58" : "Order already canceled",
+                            "49" : self.senderCompID,
+                            "56" : self.targetCompID,
+                            "34" : str(int(fixFields.get('34', '0')) + 1),
+                            "60" : datetime.utcnow().strftime("%Y%m%d-%H:%M:%S.%f")[:-3],
                         }
 
                         response = BuildFixMessage(rejectFields)
@@ -597,8 +652,8 @@ class FixEmulatorServer:
 
                     # update order state
 
-                    order["status"]        = "CANCELED"
-                    order["lastClOrdId"]   = newClOrdId
+                    order["status"]         = "CANCELED"
+                    order["lastClOrdId"]    = newClOrdId
                     order["currentClOrdId"] = newClOrdId
                     order["history"].append(newClOrdId)
 
@@ -609,20 +664,20 @@ class FixEmulatorServer:
                     orderId = order["orderId"]
 
                     ackFields = {
-                        "35": "8",
+                        "35" : "8",
                         "150": "4",
-                        "39":  "4",
-                        "37":  orderId,
-                        "17":  execId,
-                        "11":  newClOrdId,
-                        "41":  origClOrdId,
-                        "54":  order["side"],
-                        "38":  order["qty"],
-                        "55":  order["symbol"],
-                        "60":  now,
-                        "49":  self.senderCompID,
-                        "56":  self.targetCompID,
-                        "34":  str(int(fixFields.get("34", "0")) + 1),
+                        "39" : "4",
+                        "37" : orderId,
+                        "17" : execId,
+                        "11" : newClOrdId,
+                        "41" : origClOrdId,
+                        "54" : order["side"],
+                        "38" : order["qty"],
+                        "55" : order["symbol"],
+                        "60" : now,
+                        "49" : self.senderCompID,
+                        "56" : self.targetCompID,
+                        "34" : str(int(fixFields.get("34", "0")) + 1),
                     }
 
                     response = BuildFixMessage(ackFields)
@@ -669,15 +724,15 @@ class FixEmulatorServer:
                         logging.info(f"---- Replace Reject (missing tag {missing} {requiredTags[missing]}) ----")
 
                         rejectFields = {
-                            "35": "3",
-                            "45":  fixFields.get("34", "0"),
+                            "35" : "3",
+                            "45" : fixFields.get("34", "0"),
                             "371": missing,
                             "373": "1",
-                            "58":  f"Required tag {missing} ({requiredTags[missing]}) missing in ReplaceRequest",
-                            "49":  self.senderCompID,
-                            "56":  self.targetCompID,
-                            "34":  str(int(fixFields.get('34', '0')) + 1),
-                            "52":  datetime.utcnow().strftime("%Y%m%d-%H:%M:%S.%f")[:-3],
+                            "58" : f"Required tag {missing} ({requiredTags[missing]}) missing in ReplaceRequest",
+                            "49" : self.senderCompID,
+                            "56" : self.targetCompID,
+                            "34" : str(int(fixFields.get('34', '0')) + 1),
+                            "52" : datetime.utcnow().strftime("%Y%m%d-%H:%M:%S.%f")[:-3],
                         }
 
                         response = BuildFixMessage(rejectFields)
@@ -691,16 +746,16 @@ class FixEmulatorServer:
                         logging.info(f"---- Replace Reject (duplicate ClOrdID {newClOrdId}) ----")
 
                         rejectFields = {
-                            "35": "8",
+                            "35" : "8",
                             "150": "8",
-                            "39":  "8",
-                            "11":  newClOrdId,
-                            "41":  origClOrdId,
-                            "58":  "Duplicate ClOrdID on Replace Request",
-                            "49":  self.senderCompID,
-                            "56":  self.targetCompID,
-                            "34":  str(int(fixFields.get('34', '0')) + 1),
-                            "60":  datetime.utcnow().strftime("%Y%m%d-%H:%M:%S.%f")[:-3],
+                            "39" : "8",
+                            "11" : newClOrdId,
+                            "41" : origClOrdId,
+                            "58" : "Duplicate ClOrdID on Replace Request",
+                            "49" : self.senderCompID,
+                            "56" : self.targetCompID,
+                            "34" : str(int(fixFields.get('34', '0')) + 1),
+                            "60" : datetime.utcnow().strftime("%Y%m%d-%H:%M:%S.%f")[:-3],
                         }
 
                         response = BuildFixMessage(rejectFields)
@@ -713,19 +768,20 @@ class FixEmulatorServer:
                     order = self.orders.get(origClOrdId)
 
                     if not order:
+
                         logging.info(f"---- Replace Reject (unknown order {origClOrdId}) ----")
 
                         rejectFields = {
-                            "35": "8",
+                            "35" : "8",
                             "150": "8",
-                            "39":  "8",
-                            "11":  newClOrdId,
-                            "41":  origClOrdId,
-                            "58":  "Unknown order / unable to replace",
-                            "49":  self.senderCompID,
-                            "56":  self.targetCompID,
-                            "34":  str(int(fixFields.get('34', '0')) + 1),
-                            "60":  datetime.utcnow().strftime("%Y%m%d-%H:%M:%S.%f")[:-3],
+                            "39" : "8",
+                            "11" : newClOrdId,
+                            "41" : origClOrdId,
+                            "58" : "Unknown order / unable to replace",
+                            "49" : self.senderCompID,
+                            "56" : self.targetCompID,
+                            "34" : str(int(fixFields.get('34', '0')) + 1),
+                            "60" : datetime.utcnow().strftime("%Y%m%d-%H:%M:%S.%f")[:-3],
                         }
 
                         response = BuildFixMessage(rejectFields)
@@ -736,21 +792,23 @@ class FixEmulatorServer:
                     # validation — invalid qty
 
                     try:
+
                         if float(qty) <= 0:
                             raise ValueError()
+
                     except Exception:
                         logging.info("---- Replace Reject (invalid OrderQty) ----")
 
                         rejectFields = {
-                            "35": "3",
-                            "45":  fixFields.get("34", "0"),
+                            "35" : "3",
+                            "45" : fixFields.get("34", "0"),
                             "371": "38",
                             "373": "5",
-                            "58":  "OrderQty must be a positive number for Replace request",
-                            "49":  self.senderCompID,
-                            "56":  self.targetCompID,
-                            "34":  str(int(fixFields.get('34', '0')) + 1),
-                            "52":  datetime.utcnow().strftime("%Y%m%d-%H:%M:%S.%f")[:-3],
+                            "58" : "OrderQty must be a positive number for Replace request",
+                            "49" : self.senderCompID,
+                            "56" : self.targetCompID,
+                            "34" : str(int(fixFields.get('34', '0')) + 1),
+                            "52" : datetime.utcnow().strftime("%Y%m%d-%H:%M:%S.%f")[:-3],
                         }
 
                         response = BuildFixMessage(rejectFields)
@@ -761,22 +819,25 @@ class FixEmulatorServer:
                     # validation — invalid price for Limit
 
                     if ordType == "2":
+
                         try:
                             if float(price) <= 0:
                                 raise ValueError()
+
                         except Exception:
+
                             logging.info("---- Replace Reject (invalid Price) ----")
 
                             rejectFields = {
-                                "35": "3",
-                                "45":  fixFields.get("34", "0"),
+                                "35" : "3",
+                                "45" : fixFields.get("34", "0"),
                                 "371": "44",
                                 "373": "5",
-                                "58":  "Price must be positive for Limit Replace",
-                                "49":  self.senderCompID,
-                                "56":  self.targetCompID,
-                                "34":  str(int(fixFields.get('34', '0')) + 1),
-                                "52":  datetime.utcnow().strftime("%Y%m%d-%H:%M:%S.%f")[:-3],
+                                "58" : "Price must be positive for Limit Replace",
+                                "49" : self.senderCompID,
+                                "56" : self.targetCompID,
+                                "34" : str(int(fixFields.get('34', '0')) + 1),
+                                "52" : datetime.utcnow().strftime("%Y%m%d-%H:%M:%S.%f")[:-3],
                             }
 
                             response = BuildFixMessage(rejectFields)
@@ -810,22 +871,22 @@ class FixEmulatorServer:
                     orderId = order["orderId"]
 
                     ackFields = {
-                        "35": "8",
+                        "35" : "8",
                         "150": "5",
-                        "39":  "5",
-                        "37":  orderId,
-                        "17":  execId,
-                        "11":  newClOrdId,
-                        "41":  origClOrdId,
-                        "54":  side,
-                        "38":  qty,
-                        "55":  symbol,
-                        "40":  ordType,
-                        "44":  price,
-                        "60":  now,
-                        "49":  self.senderCompID,
-                        "56":  self.targetCompID,
-                        "34":  str(int(fixFields.get("34", "0")) + 1),
+                        "39" : "5",
+                        "37" : orderId,
+                        "17" : execId,
+                        "11" : newClOrdId,
+                        "41" : origClOrdId,
+                        "54" : side,
+                        "38" : qty,
+                        "55" : symbol,
+                        "40" : ordType,
+                        "44" : price,
+                        "60" : now,
+                        "49" : self.senderCompID,
+                        "56" : self.targetCompID,
+                        "34" : str(int(fixFields.get("34", "0")) + 1),
                     }
 
                     response = BuildFixMessage(ackFields)
@@ -846,19 +907,48 @@ class FixEmulatorServer:
     # session messages
     #
 
+
+    ###############################################################################
+    #
+    # Procedure   : BuildLogonResponse()
+    #
+    # Description : Build and return FIX Logon message. (35=A)
+    #
+    # Input       : incomingMsg - dictionary of parsed FIX fields from client
+    #
+    # Returns     : string - Encoded FIX Logon message (35=A)
+    #
+    ###############################################################################
+
     def BuildLogonResponse(self, incomingMsg):
+
         fields = {
-            "35": "A",
-            "34": "1",
-            "49": self.senderCompID,
-            "56": self.targetCompID,
-            "52": datetime.utcnow().strftime("%Y%m%d-%H:%M:%S.%f")[:-3],
-            "98": "0",
+            "35" : "A",
+            "34" : "1",
+            "49" : self.senderCompID,
+            "56" : self.targetCompID,
+            "52" : datetime.utcnow().strftime("%Y%m%d-%H:%M:%S.%f")[:-3],
+            "98" : "0",
             "108": str(self.heartBtInt),
         }
+
         return BuildFixMessage(fields)
 
+
+    ###############################################################################
+    #
+    # Procedure   : BuildHeartbeatResponse()
+    #
+    # Description : Build and return FIX Heartbeat response. (35=0)
+    #
+    # Input       : incomingMsg - dictionary of parsed FIX fields from client
+    #
+    # Returns     : string - Encoded FIX Heartbeat message (35=0)
+    #
+    ###############################################################################
+
     def BuildHeartbeatResponse(self, incomingMsg):
+
         fields = {
             "35": "0",
             "34": str(int(incomingMsg.get("34", "0")) + 1),
@@ -866,9 +956,24 @@ class FixEmulatorServer:
             "56": self.targetCompID,
             "52": datetime.utcnow().strftime("%Y%m%d-%H:%M:%S.%f")[:-3],
         }
+
         return BuildFixMessage(fields)
 
+
+    ###############################################################################
+    #
+    # Procedure   : BuildLogoutResponse()
+    #
+    # Description : Build and return FIX Logout. (35=5) 
+    #
+    # Input       : incomingMsg - dictionary of parsed FIX fields from client
+    #
+    # Returns     : string - Encoded FIX Logout message (35=5)
+    #
+    ###############################################################################
+
     def BuildLogoutResponse(self, incomingMsg):
+
         fields = {
             "35": "5", 
             "34": str(int(incomingMsg.get("34", "0")) + 1),
@@ -876,4 +981,5 @@ class FixEmulatorServer:
             "56": self.targetCompID,
             "52": datetime.utcnow().strftime("%Y%m%d-%H:%M:%S.%f")[:-3],
         }
+
         return BuildFixMessage(fields)
