@@ -948,6 +948,28 @@ class FixEmulatorServer:
                     logging.info("---- Order Replaced ----")
                     logging.info("< " + response.replace(SOH, '|'))
 
+                    if self.scenarioEngine and self.sessionConfig:
+
+                        orderObj = {
+                            "clOrdID": newClOrdId,
+                            "symbol" : symbol,
+                            "side"   : side,
+                            "qty"    : qty,
+                            "price"  : price,
+                            "server" : self,
+                        }
+
+                        chosenBehavior = self.sessionConfig["execution"]["defaultBehavior"]
+
+                        for rule in self.sessionConfig["execution"]["rules"]:
+                            if rule["matchFn"](symbol):
+                                chosenBehavior = rule["behavior"]
+                                break
+
+                        logging.info(f"[SCENARIO] (REPLACE) Symbol={symbol} → Behavior={chosenBehavior}")
+
+                        self.scenarioEngine.runBehavior(orderObj, chosenBehavior)
+
                 else:
 
                     logging.info(f"--- Unsupported MsgType {msgType} ---")
